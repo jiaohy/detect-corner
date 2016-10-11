@@ -15,13 +15,16 @@
 		//debug(corners);
 		
 		var cornerPoints = [];
-			for (var i in corners) {
-				cornerPoints.push(resampled[corners[i]]);
-			}
-			// debug(cornerPoints);
-		
+		for (var i in corners) {
+			cornerPoints.push(resampled[corners[i]]);
+		}
+			
+		var cornerIndex = [];
+        for (var i = 0; i < cornerPoints.length; i++) {
+            cornerIndex.push(cornerPoints[i].id);            
+        };
 		//4. return corners.
-		return cornerPoints;
+		return cornerIndex;
 	};
 	
 	

@@ -197,26 +197,35 @@
 						var points = current.getStrokes()[key].getPoints();
 
 						var corners = shortStraw(points);
+						
 
 						// Example below is worst case of creating substroke equal to the stroke
 						// It serves to show the functions you may need
-
+						var j = 0;
+						for(var k = 1; k < corners.length; k++) {
+							var newPoints = [];
+							while(j < corners[k]) {
+								newPoints.push(points[j++]);
+							}
+							var substroke = new srlib.core.data.container.Substroke(current.getStrokes()[key],newPoints,newPoints[newPoints.length - 1].getTime());
+							current.addSubstroke(substroke);
+						}
 						// Get points of a stroke
 						
 						// Substrokes will also have a list of points, derived from parent stroke
-						var newPoints = [];
+						// var newPoints = [];
 
-						// Iterating through points, perhaps for feature detection or some other purpose
-						for (var j = 0; j < points.length; j++) {
-							// Here, simply add all points to the substroke
-							newPoints.push(points[j]);
-						}
+						// // Iterating through points, perhaps for feature detection or some other purpose
+						// for (var j = 0; j < points.length; j++) {
+						// 	// Here, simply add all points to the substroke
+						// 	newPoints.push(points[j]);
+						// }
 
-						// Creating a substroke: pass in parent stroke, points list, and timestamp (likely inherited from parent or last point)
-						var substroke = new srlib.core.data.container.Substroke(current.getStrokes()[key],newPoints,newPoints[newPoints.length - 1].getTime());
+						// // Creating a substroke: pass in parent stroke, points list, and timestamp (likely inherited from parent or last point)
+						// var substroke = new srlib.core.data.container.Substroke(current.getStrokes()[key],newPoints,newPoints[newPoints.length - 1].getTime());
 
-						// Add substroke to sketch for drawing
-						current.addSubstroke(substroke);
+						// // Add substroke to sketch for drawing
+						// current.addSubstroke(substroke);
 
 						// NOTE: There are a number of functions in srlib, and many different ways to accomplish these tasks of creating and managing substrokes. A simple method is shown here, but ask and explore about other methods if desired.
 					}
