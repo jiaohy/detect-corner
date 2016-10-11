@@ -36,7 +36,7 @@
     shortStraw.resamplePoints = function(points,s) {	
         var distance = 0;
         var resampled = [];
-        resampled.push(points[0]);
+        resampled.push({x:points[0].x, y:points[0].y, id: 0});
         for (var i=1; i<points.length; i++) {
         	var p1 = points[i-1];
         	var p2 = points[i];
@@ -49,7 +49,7 @@
 			var qy = 
         			p1.y + ((s - distance) /d2) *
         			(p2.y - p1.y);
-			var q = {x:qx, y:qy};
+			var q = {x:qx, y:qy, id: i};
 			resampled.push (q);
 			// points.splice(i, 0, q);
 			distance= 0;
