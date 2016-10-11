@@ -204,7 +204,7 @@
 						var j = 0;
 						for(var k = 1; k < corners.length; k++) {
 							var newPoints = [];
-							while(j < corners[k]) {
+							while(j <= corners[k]) {
 								newPoints.push(points[j++]);
 							}
 							var substroke = new srlib.core.data.container.Substroke(current.getStrokes()[key],newPoints,newPoints[newPoints.length - 1].getTime());
