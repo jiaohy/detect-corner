@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Homework 2 Starter</title>
+	<!-- An AMD-loader like RequireJS is necessary for srlib's asynchronous modules -->
+	<script src="require.js"></script>
+	<!-- Load srlib following RequireJS -->
+	<script src="srlib.js"></script>
+	<script src="shortStraw.js"></script>
+	<!-- JQuery provides a very nice set of tools when dealing with AJAX requests -->
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+	<script type="text/javascript">
+	// Begin processing once webpage loaded
+	$(document).ready(function() {
+		// Globals
+		sketches = {};
+		deserializer = new srlib.core.data.io.Deserializer();
+		serializer = new srlib.core.data.io.Serializer();
+
+		// Metrics
+		Total = 0;
+		AllNoth = 0;
+		TP = 0;
+		FP = 0;
+		TN = 0;
+		FN = 0;
+
+		drawStrokes = true;
+
+		startSketch = 4000; // Rather than start with the oldest, will look at some of the more recent sketches for now
+		maxSketches = startSketch + 200; // To begin with, simply consider 200 sketches for segmentation; can change this value anytime for more testing
+
+		getSketches();
+
+	});
+
+	function updateDrawStrokes() {
+		drawStrokes = true;
+		$('#drawStrokes').prop('checked',true);
+		$('#drawSubstrokes').prop('checked',false);
+		updateCanvas();
+	}
+
+	function updateDrawSubstrokes() {
+		drawStrokes = false;
+		$('#drawStrokes').prop('checked',false);
+		$('#drawSubstrokes').prop('checked',true);
+		updateCanvas();
+	}
+
+	function getS(s) {
+		if (!drawStrokes) {
+			return s.getSubstrokes();
+		}
+		else {
+			return s.getStrokes();
+		}
+	}
+
+	// Draw data on update of sketch selection
+	function updateCanvas() {
+		var c = document.getElementById("sketch");
+		var ctx = c.getContext("2d");
+
+		// Clear canvas first
+		ctx.clearRect(0,0,c.width,c.height);
+
+		var current = sketches[$('#sketches').val()]; // Select the sketch selected from global dictionary
+		for (var key in getS(current)) {
+			// Draw new shape
+
+			var stroke = getS(current)[key]; // Select the drawing area
+			var points = stroke.getPoints();
+
+			ctx.beginPath();
+			ctx.lineWidth = "5";
+			ctx.strokeStyle = "#"+((1<<24)*Math.random()|0).toString(16); // Randomize stroke colors for easy visualization
+
+			for (var i = 0; i < points.length; i++) { // Set path to point values
+				if (i == 0) {
+					ctx.moveTo(points[i].getX(),points[i].getY());
+				}
+				else {
+					ctx.lineTo(points[i].getX(),points[i].getY());
+				}
+			}
+
+			ctx.stroke();  // Draw it
+		}
+	}
+	function getMetrics(original,current) {
+		var origSubstrokes = {};
+		var currSubstrokes = {};
+		var failures = false;
+
+		// Sort substrokes from original and current into lists grouped by parent stroke
+		for (var key in original.getSubstrokes()) {
+			try {
+				if (original.getSubstrokes()[key].getParent().getId() in origSubstrokes) {
+					origSubstrokes[original.getSubstrokes()[key].getParent().getId()].push(original.getSubstrokes()[key]);
+				}
+				else {
+					origSubstrokes[original.getSubstrokes()[key].getParent().getId()] = [original.getSubstrokes()[key]];
+				}
+			}
+			catch(err) {
+				// Some sketches have an error with where not all substrokes have a parent, ignore these since they won't appear in the current list either
+			}
+		}
+
+		for (var key in current.getSubstrokes()) {
+			try{
+				if (current.getSubstrokes()[key].getParent().getId() in currSubstrokes) {
+					currSubstrokes[current.getSubstrokes()[key].getParent().getId()].push(current.getSubstrokes()[key]);
+				}
+				else {
+					currSubstrokes[current.getSubstrokes()[key].getParent().getId()] = [current.getSubstrokes()[key]];
+				}
+			}
+			catch(err) {
+				// Some sketches may be missing a parent, ignore in this case
+			}
+		}
+
+		// Attempt to match substrokes from the same parent
+		// If only 1 substroke from parent -- no segmentation;
+		// All matches are True Negatives
+		// All extras in current are False Positives
+		// If more than 1 substroke from parent -- segmentation; 
+		// All matches are True Positives
+		// All extras in current are False Positives
+		// All extras in original are False Negatives
+		for (var key in origSubstrokes) { // Due to a small bug, there's a few sketches where the stroke didn't get added, so it is missing in current; this makes original a superset at worse when they don't match, so just go through current's strokes
+			var origList = origSubstrokes[key];
+			var currList = currSubstrokes[key];
+
+			if (origList.length == 1) { // No segmentation
+				if (currList.length == 1) {
+					TN = TN + 1; // Correctly determine no segmentation
+				}
+				else {
+					FP = FP + (currList.length - 1); // All extra strokes are FP
+					failures = true;
+				}
+			}
+			else { // Segmentation
+				// Try to find matches
+				var distances = [];
+				for (var j = 0; j < origList.length; j++) {
+					distances[j] = [];
+					for (var k = 0; k < currList.length; k++) {
+						// distance[j][k] = distance between start and end points summed
+						distances[j][k] = origList[j].getPoints()[0].distance(currList[k].getPoints()[0])
+						+ origList[j].getPoints()[origList[j].getPoints().length-1].distance(currList[k].getPoints()[currList[k].getPoints().length-1]);
+					}
+				}
+				// Use distance matrix to compute metrics
+				for (var j = 0; j < distances.length; j++) {
+					var k = distances[j].indexOf(Math.min.apply(Math, distances[j]));
+					if (distances[j][k] < 3) {
+						TP = TP + 1; // A match that was cumulatively within 3 pixels of both start and end points
+					}
+					else {
+						FN = FN + 1; // Else, no close match; we assume a miss, which is false negative
+						failures = true;
+					}
+				}
+				if (currList.length > origList.length) {
+					FP = FP + (currList.length - origList.length); // Any extra in currList are FPs
+					failures = true;
+				}
+			}
+		}
+		
+		Total = Total + 1;
+		if (!failures) {
+			AllNoth = AllNoth + 1;
+		}
+	}
+
+	// Load data, populating global dictionary of sketch objects and selection list for viewing ease
+	function getSketches() {
+		// For this assignment, sketches will live on srl_db
+		// See http://srl-prod1.cs.tamu.edu:7750/doc/ for more info about using the API
+		while (startSketch < maxSketches) {
+			$.ajax({url: "http://srl-prod1.cs.tamu.edu:7750/getSketches?domain=MechanixCleaned&interpretation=force&skip=" + String(startSketch), success: function(result) {
+				for (var i = 0; i < result.length; i++) {
+					json = result[i]; // Get original sketch
+					var original = deserializer.fromSketchMLJSON(JSON.stringify(json)); // Put in srlib object for processing
+
+					json = serializer.toSketchMLJSONbasic(original); // While the original remains for reference, we'll strip out the substrokes and other elements so you can add your own substrokes for comparison
+					var current = deserializer.fromSketchMLJSONbasic(json);
+
+					// Create substrokes here!
+					for (var key in current.getStrokes()) {
+						var points = current.getStrokes()[key].getPoints();
+
+						var corners = shortStraw(points);
+
+						// Example below is worst case of creating substroke equal to the stroke
+						// It serves to show the functions you may need
+
+						// Get points of a stroke
+						
+						// Substrokes will also have a list of points, derived from parent stroke
+						var newPoints = [];
+
+						// Iterating through points, perhaps for feature detection or some other purpose
+						for (var j = 0; j < points.length; j++) {
+							// Here, simply add all points to the substroke
+							newPoints.push(points[j]);
+						}
+
+						// Creating a substroke: pass in parent stroke, points list, and timestamp (likely inherited from parent or last point)
+						var substroke = new srlib.core.data.container.Substroke(current.getStrokes()[key],newPoints,newPoints[newPoints.length - 1].getTime());
+
+						// Add substroke to sketch for drawing
+						current.addSubstroke(substroke);
+
+						// NOTE: There are a number of functions in srlib, and many different ways to accomplish these tasks of creating and managing substrokes. A simple method is shown here, but ask and explore about other methods if desired.
+					}
+
+					// Save both sketches for visual comparison
+					sketches["old-" + original.getId()] = original;
+					$('#sketches').append($('<option/>', { 
+						value: "old-" + original.getId(), // Save sketch id as value for easy access from global dictionary
+						text : "old-" + original.getId() // Show id as value
+					}));
+
+					sketches["new-" + current.getId()] = current;
+					$('#sketches').append($('<option/>', { 
+						value: "new-" + current.getId(), // Save sketch id as value for easy access from global dictionary
+						text : "new-" + current.getId() // Show id as value
+					}));
+				}
+				getMetrics(original,current);
+			}});
+		startSketch = startSketch + 50; // getSketches gets 50 sketches at a time always, break into requests with a skip/start counter
+		}
+		
+	}
+	</script>
+</head>
+<!-- The body consists simply of a canvas for drawing and a selection list; this display is for the user's benefit, not required -->
+<body>
+
+<canvas id="sketch" width="1024" height="1024" style="position:fixed;top:0px;left:0px;border:1px solid #d3d3d3">
+Your browser does not support the HTML5 canvas tag.</canvas>
+
+<select id="sketches" size="2" style="position:fixed;top:0px;left:0px;width:20%;height:100%;" onchange="updateCanvas()"></select>
+
+<div style="position:fixed;top:0px;right:0px">
+Draw 
+<input id="drawStrokes" type="radio" value="strokes" onclick="updateDrawStrokes()" checked="true"> Strokes
+<input id="drawSubstrokes" type="radio" value="substrokes" onclick="updateDrawSubstrokes()"> Substrokes<br>
+</div>
+
+</body>
+</html>
