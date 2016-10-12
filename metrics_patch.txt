@@ -1,0 +1,113 @@
+# This is not an automated patch. Follow the directions below to add the metrics code to your "index.html" file manually, if you're using the starter code.
+# At the end, you may call something like the following in your console to see the results, which is what I will be doing for evaluation --> console.log("Total: ",Total,", AllNoth: ",AllNoth,", TP: ",TP,", FP: ",FP,", FN: ",FN,", TN: ",TN)
+
+
+# Add variables for computing metrics. These may be placed in the "ready" function, for instance at line 20
+
+
+		// Metrics
+		Total = 0;
+		AllNoth = 0;
+		TP = 0;
+		FP = 0;
+		TN = 0;
+		FN = 0;
+
+
+# Add a call to the "getMetrics()" function which will use these variables to build up the evaluation. I placed this at the bottom of the AJAX call in "getSketches()" under the code that appends sketches to the left-hand list.
+
+
+					getMetrics(original,current);
+
+
+# Add the metrics function inside the script tag above the "getSketches()" function.
+
+	function getMetrics(original, current) {
+		var origSubstrokes = {};
+		var currSubstrokes = {};
+		var failures = false;
+
+		// Sort substrokes from original and current into lists grouped by parent stroke
+		for (var key in original.getSubstrokes()) {
+			try {
+				if (original.getSubstrokes()[key].getPoints().length > 1) {
+					if (original.getSubstrokes()[key].getParent().getId() in origSubstrokes) {
+						origSubstrokes[original.getSubstrokes()[key].getParent().getId()].push(original.getSubstrokes()[key]);
+					} else {
+						origSubstrokes[original.getSubstrokes()[key].getParent().getId()] = [original.getSubstrokes()[key]];
+					}
+				}
+			} catch (err) {
+				// Some sketches have an error with where not all substrokes have a parent, ignore these since they won't appear in the current list either
+			}
+		}
+
+		for (var key in current.getSubstrokes()) {
+			try {
+				if (current.getSubstrokes()[key].getParent().getId() in currSubstrokes) {
+					currSubstrokes[current.getSubstrokes()[key].getParent().getId()].push(current.getSubstrokes()[key]);
+				} else {
+					currSubstrokes[current.getSubstrokes()[key].getParent().getId()] = [current.getSubstrokes()[key]];
+				}
+			} catch (err) {
+				// Some sketches may be missing a parent, ignore in this case
+			}
+		}
+
+		// Attempt to match substrokes from the same parent
+		// If only 1 substroke from parent -- no segmentation;
+		// All matches are True Negatives
+		// All extras in current are False Positives
+		// If more than 1 substroke from parent -- segmentation; 
+		// All matches are True Positives
+		// All extras in current are False Positives
+		// All extras in original are False Negatives
+		for (var key in origSubstrokes) { // Due to a small bug, there's a few sketches where the stroke didn't get added, so it is missing in current; this makes original a superset at worse when they don't match, so just go through current's strokes
+			var origList = origSubstrokes[key];
+			var currList = currSubstrokes[key];
+
+			// Get a threshold for corner distance customized for the stroke size
+			var BB = new srlib.core.data.container.BoundingBox(origList[0].getParent());
+			var threshold = Math.sqrt(Math.pow(BB.getMaxX() - BB.getMinX(), 2) + Math.pow(BB.getMaxY() - BB.getMinY(), 2)) / 40.0;
+
+			if (origList.length == 1) { // No segmentation
+				if (currList.length == 1) {
+					TN = TN + 1; // Correctly determine no segmentation
+				} else {
+					FP = FP + (currList.length - 1) / 2; // All extra strokes are FP
+					failures = true;
+				}
+			} else { // Segmentation
+				// Try to find matches
+				var distances = [];
+
+				for (var j = 0; j < origList.length; j++) {
+					distances[j] = [];
+					for (var k = 0; k < currList.length; k++) {
+						// distance[j][k] = distance between start and end points summed
+						distances[j][k] = origList[j].getPoints()[0].distance(currList[k].getPoints()[0]) + origList[j].getPoints()[origList[j].getPoints().length - 1].distance(currList[k].getPoints()[currList[k].getPoints().length - 1]);
+					}
+				}
+				// Use distance matrix to compute metrics
+				for (var j = 0; j < distances.length; j++) {
+					var k = distances[j].indexOf(Math.min.apply(Math, distances[j]));
+					if (distances[j][k] < threshold * 10) {
+						TP = TP + 1; // A match that was cumulatively within 3 pixels of both start and end points
+					} else {
+						FN = FN + 0.5; // Else, no close match; we assume a miss, which is false negative
+						failures = true;
+					}
+				}
+				if (currList.length > origList.length) {
+					FP = FP + (currList.length - origList.length) / 2; // Any extra in currList are FPs
+					failures = true;
+				}
+			}
+		}
+
+		Total = Total + 1;
+		if (!failures) {
+			AllNoth = AllNoth + 1;
+		}
+	}
+

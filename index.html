@@ -89,7 +89,7 @@
 			ctx.stroke();  // Draw it
 		}
 	}
-	function getMetrics(original,current) {
+	function getMetrics(original, current) {
 		var origSubstrokes = {};
 		var currSubstrokes = {};
 		var failures = false;
@@ -97,28 +97,26 @@
 		// Sort substrokes from original and current into lists grouped by parent stroke
 		for (var key in original.getSubstrokes()) {
 			try {
-				if (original.getSubstrokes()[key].getParent().getId() in origSubstrokes) {
-					origSubstrokes[original.getSubstrokes()[key].getParent().getId()].push(original.getSubstrokes()[key]);
+				if (original.getSubstrokes()[key].getPoints().length > 1) {
+					if (original.getSubstrokes()[key].getParent().getId() in origSubstrokes) {
+						origSubstrokes[original.getSubstrokes()[key].getParent().getId()].push(original.getSubstrokes()[key]);
+					} else {
+						origSubstrokes[original.getSubstrokes()[key].getParent().getId()] = [original.getSubstrokes()[key]];
+					}
 				}
-				else {
-					origSubstrokes[original.getSubstrokes()[key].getParent().getId()] = [original.getSubstrokes()[key]];
-				}
-			}
-			catch(err) {
+			} catch (err) {
 				// Some sketches have an error with where not all substrokes have a parent, ignore these since they won't appear in the current list either
 			}
 		}
 
 		for (var key in current.getSubstrokes()) {
-			try{
+			try {
 				if (current.getSubstrokes()[key].getParent().getId() in currSubstrokes) {
 					currSubstrokes[current.getSubstrokes()[key].getParent().getId()].push(current.getSubstrokes()[key]);
-				}
-				else {
+				} else {
 					currSubstrokes[current.getSubstrokes()[key].getParent().getId()] = [current.getSubstrokes()[key]];
 				}
-			}
-			catch(err) {
+			} catch (err) {
 				// Some sketches may be missing a parent, ignore in this case
 			}
 		}
@@ -135,49 +133,52 @@
 			var origList = origSubstrokes[key];
 			var currList = currSubstrokes[key];
 
+			// Get a threshold for corner distance customized for the stroke size
+			var BB = new srlib.core.data.container.BoundingBox(origList[0].getParent());
+			var threshold = Math.sqrt(Math.pow(BB.getMaxX() - BB.getMinX(), 2) + Math.pow(BB.getMaxY() - BB.getMinY(), 2)) / 40.0;
+
 			if (origList.length == 1) { // No segmentation
 				if (currList.length == 1) {
 					TN = TN + 1; // Correctly determine no segmentation
-				}
-				else {
-					FP = FP + (currList.length - 1); // All extra strokes are FP
+				} else {
+					FP = FP + (currList.length - 1) / 2; // All extra strokes are FP
 					failures = true;
 				}
-			}
-			else { // Segmentation
+			} else { // Segmentation
 				// Try to find matches
 				var distances = [];
+
 				for (var j = 0; j < origList.length; j++) {
 					distances[j] = [];
 					for (var k = 0; k < currList.length; k++) {
 						// distance[j][k] = distance between start and end points summed
-						distances[j][k] = origList[j].getPoints()[0].distance(currList[k].getPoints()[0])
-						+ origList[j].getPoints()[origList[j].getPoints().length-1].distance(currList[k].getPoints()[currList[k].getPoints().length-1]);
+						distances[j][k] = origList[j].getPoints()[0].distance(currList[k].getPoints()[0]) + origList[j].getPoints()[origList[j].getPoints().length - 1].distance(currList[k].getPoints()[currList[k].getPoints().length - 1]);
 					}
 				}
 				// Use distance matrix to compute metrics
 				for (var j = 0; j < distances.length; j++) {
 					var k = distances[j].indexOf(Math.min.apply(Math, distances[j]));
-					if (distances[j][k] < 3) {
+					if (distances[j][k] < threshold * 10) {
 						TP = TP + 1; // A match that was cumulatively within 3 pixels of both start and end points
-					}
-					else {
-						FN = FN + 1; // Else, no close match; we assume a miss, which is false negative
+					} else {
+						FN = FN + 0.5; // Else, no close match; we assume a miss, which is false negative
 						failures = true;
 					}
 				}
 				if (currList.length > origList.length) {
-					FP = FP + (currList.length - origList.length); // Any extra in currList are FPs
+					FP = FP + (currList.length - origList.length) / 2; // Any extra in currList are FPs
 					failures = true;
 				}
 			}
 		}
-		
+
 		Total = Total + 1;
 		if (!failures) {
 			AllNoth = AllNoth + 1;
 		}
 	}
+
+
 
 	// Load data, populating global dictionary of sketch objects and selection list for viewing ease
 	function getSketches() {
